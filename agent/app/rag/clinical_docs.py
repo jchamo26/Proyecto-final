@@ -131,4 +131,52 @@ CLINICAL_DOCUMENTS = [
         "text": "En enfermedad renal crónica se recomienda monitorizar creatinina, TFG y albuminuria de manera periódica.",
         "tags": ["renal", "creatinina", "albuminuria"],
     },
+    {
+        "id": "doc-23",
+        "title": "Depresión del ST en ECG",
+        "text": "Una depresión del segmento ST, cuantificada como oldpeak en el dataset UCI Heart Disease, se asocia con mayor probabilidad de isquemia miocárdica.",
+        "tags": ["ecg", "oldpeak", "isquemia"],
+    },
+    {
+        "id": "doc-24",
+        "title": "Frecuencia máxima alcanzada",
+        "text": "Un valor bajo de thalach (frecuencia cardiaca máxima) durante prueba de esfuerzo puede sugerir reserva cronotrópica limitada y mayor riesgo cardiovascular.",
+        "tags": ["thalach", "prueba de esfuerzo", "riesgo cardiovascular"],
+    },
+    {
+        "id": "doc-25",
+        "title": "Dolor torácico y perfil clínico",
+        "text": "El tipo de dolor torácico (cp) ayuda a estratificar riesgo de enfermedad coronaria; patrones atípicos o asintomáticos en población de riesgo requieren evaluación complementaria.",
+        "tags": ["cp", "dolor toracico", "coronario"],
+    },
+    {
+        "id": "doc-26",
+        "title": "Carga aterosclerótica por angiografía",
+        "text": "Un número mayor de vasos comprometidos (ca) se correlaciona con mayor severidad de enfermedad arterial coronaria y peor pronóstico clínico.",
+        "tags": ["ca", "angiografia", "coronaria"],
+    },
+    {
+        "id": "doc-27",
+        "title": "Presión arterial en reposo",
+        "text": "Trestbps elevado en combinación con colesterol alto y edad avanzada incrementa la probabilidad pretest de patología cardiovascular significativa.",
+        "tags": ["trestbps", "presion arterial", "riesgo"],
+    },
+    {
+        "id": "doc-28",
+        "title": "Fenotipos de enfermedad cardiaca",
+        "text": "En el objetivo num del dataset UCI, num=0 indica ausencia de enfermedad y num>=1 indica presencia con severidad creciente, útil para priorización clínica.",
+        "tags": ["uci", "target", "severidad"],
+    },
+    {
+        "id": "doc-29",
+        "title": "Integración de datos para decisiones",
+        "text": "La correlación entre hallazgos de ECG, observaciones FHIR y factores clínicos del paciente mejora la interpretabilidad en agentes RAG cardiológicos.",
+        "tags": ["rag", "fhir", "ecg", "interpretabilidad"],
+    },
+    {
+        "id": "doc-30",
+        "title": "Triage de riesgo cardiaco",
+        "text": "Pacientes con dolor torácico, cambios electrocardiográficos y biomarcadores anormales deben considerarse de alto riesgo y priorizar evaluación urgente.",
+        "tags": ["triage", "ecg", "alto riesgo"],
+    },
 ]

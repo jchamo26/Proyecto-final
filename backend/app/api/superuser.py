@@ -15,10 +15,10 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..core.config import settings
-from ..core.rate_limit import limiter
-from ..db.models import AuditEvent, ObservationRecord, PatientRecord, ProcedureLog
-from ..db.session import get_db
+from app.core.config import settings
+from app.core.rate_limit import limiter
+from app.db.models import AppointmentRecord, AuditEvent, ObservationRecord, PatientRecord, ProcedureLog, VitalSignRecord
+from app.db.session import get_db
 
 router = APIRouter()
 
@@ -58,7 +58,8 @@ class AccessTokenRequest(BaseModel):
 
 class InferenceRequest(BaseModel):
     patient_fhir: Dict[str, Any]
-    model: str
+    model: Optional[str] = None
+    ecg_image_base64: Optional[str] = None
 
 class DeleteReason(BaseModel):
     reason: str
@@ -81,6 +82,65 @@ class ProcedureLogItem(BaseModel):
     patient_identifier: Optional[str] = None
     comment: str
     timestamp: str
+
+
+class VitalSignCreate(BaseModel):
+    patient_name: Optional[str] = None
+    patient_identifier: Optional[str] = None
+    heart_rate: Optional[int] = None
+    systolic_bp: Optional[int] = None
+    diastolic_bp: Optional[int] = None
+    respiratory_rate: Optional[int] = None
+    temperature_c: Optional[float] = None
+    spo2: Optional[int] = None
+    weight_kg: Optional[float] = None
+    height_cm: Optional[float] = None
+    note: Optional[str] = None
+
+
+class VitalSignItem(BaseModel):
+    id: int
+    patient_id: str
+    patient_name: Optional[str] = None
+    patient_identifier: Optional[str] = None
+    heart_rate: Optional[int] = None
+    systolic_bp: Optional[int] = None
+    diastolic_bp: Optional[int] = None
+    respiratory_rate: Optional[int] = None
+    temperature_c: Optional[float] = None
+    spo2: Optional[int] = None
+    weight_kg: Optional[float] = None
+    height_cm: Optional[float] = None
+    bmi: Optional[float] = None
+    note: Optional[str] = None
+    recorded_at: str
+
+
+class AppointmentCreate(BaseModel):
+    patient_id: str
+    patient_name: Optional[str] = None
+    patient_identifier: Optional[str] = None
+    appointment_type: str = "control"
+    mode: str = "virtual"
+    starts_at: str
+    ends_at: str
+    status: str = "scheduled"
+    reason: Optional[str] = None
+    location: Optional[str] = None
+
+
+class AppointmentItem(BaseModel):
+    id: int
+    patient_id: str
+    patient_name: Optional[str] = None
+    patient_identifier: Optional[str] = None
+    appointment_type: str
+    mode: str
+    starts_at: str
+    ends_at: str
+    status: str
+    reason: Optional[str] = None
+    location: Optional[str] = None
 
 
 ID_TYPE_OPTIONS = ("CC", "TI", "CE", "PS")
@@ -228,6 +288,40 @@ def _target_num_from_row(target_row: Optional[Dict[str, Any]]) -> int:
 
 def _pathology_from_target(target_num: int) -> str:
     return PATHOLOGY_BY_TARGET.get(target_num, "Patología cardíaca no especificada")
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Se requiere una fecha/hora válida en formato ISO 8601.")
+    try:
+        return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Use ISO 8601, por ejemplo 2026-06-01T14:30:00.")
+
+
+def _build_vital_item(row: VitalSignRecord) -> Dict[str, Any]:
+    bmi = None
+    if row.weight_kg and row.height_cm and row.height_cm > 0:
+        height_m = row.height_cm / 100.0
+        bmi = round(row.weight_kg / (height_m * height_m), 2)
+    return {
+        "id": row.id,
+        "patient_id": row.patient_id,
+        "patient_name": row.patient_name,
+        "patient_identifier": row.patient_identifier,
+        "heart_rate": row.heart_rate,
+        "systolic_bp": row.systolic_bp,
+        "diastolic_bp": row.diastolic_bp,
+        "respiratory_rate": row.respiratory_rate,
+        "temperature_c": row.temperature_c,
+        "spo2": row.spo2,
+        "weight_kg": row.weight_kg,
+        "height_cm": row.height_cm,
+        "bmi": bmi,
+        "note": row.note,
+        "recorded_at": row.recorded_at.isoformat() if row.recorded_at else datetime.utcnow().isoformat(),
+    }
 
 
 def _random_identity_for_row(row_index: int) -> Dict[str, str]:
@@ -710,6 +804,143 @@ async def add_observation(request: Request, patient_id: str, observation: Dict[s
     _create_audit(db, current_user["email"], "create_observation", "Observation", result.get("id"), f"patient_id={patient_id}")
     return result
 
+
+@router.post("/superuser/patients/{patient_id}/vitals", response_model=VitalSignItem, status_code=status.HTTP_201_CREATED)
+@limiter.limit("60/minute")
+async def create_vital_sign(
+    request: Request,
+    patient_id: str,
+    payload: VitalSignCreate,
+    current_user: Dict = Depends(get_current_superuser),
+    db: Session = Depends(get_db),
+):
+    entry = VitalSignRecord(
+        patient_id=str(patient_id),
+        patient_name=(payload.patient_name or "").strip() or None,
+        patient_identifier=(payload.patient_identifier or "").strip() or None,
+        heart_rate=payload.heart_rate,
+        systolic_bp=payload.systolic_bp,
+        diastolic_bp=payload.diastolic_bp,
+        respiratory_rate=payload.respiratory_rate,
+        temperature_c=payload.temperature_c,
+        spo2=payload.spo2,
+        weight_kg=payload.weight_kg,
+        height_cm=payload.height_cm,
+        note=(payload.note or "").strip() or None,
+        created_by=current_user["email"],
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+
+    _create_audit(db, current_user["email"], "create_vital_sign", "VitalSign", str(entry.id), f"patient_id={patient_id}")
+    return _build_vital_item(entry)
+
+
+@router.get("/superuser/patients/{patient_id}/vitals", response_model=List[VitalSignItem])
+@limiter.limit("120/minute")
+async def list_vital_signs(
+    request: Request,
+    patient_id: str,
+    limit: int = 30,
+    current_user: Dict = Depends(get_current_superuser),
+    db: Session = Depends(get_db),
+):
+    safe_limit = max(1, min(limit, 200))
+    rows = (
+        db.query(VitalSignRecord)
+        .filter(VitalSignRecord.patient_id == str(patient_id))
+        .order_by(VitalSignRecord.recorded_at.desc(), VitalSignRecord.id.desc())
+        .limit(safe_limit)
+        .all()
+    )
+    _create_audit(db, current_user["email"], "list_vital_signs", "VitalSign", str(patient_id), f"limit={safe_limit}")
+    return [_build_vital_item(item) for item in rows]
+
+
+@router.post("/superuser/appointments", response_model=AppointmentItem, status_code=status.HTTP_201_CREATED)
+@limiter.limit("60/minute")
+async def create_appointment(
+    request: Request,
+    payload: AppointmentCreate,
+    current_user: Dict = Depends(get_current_superuser),
+    db: Session = Depends(get_db),
+):
+    starts_at = _parse_iso_datetime(payload.starts_at)
+    ends_at = _parse_iso_datetime(payload.ends_at)
+    if ends_at <= starts_at:
+        raise HTTPException(status_code=400, detail="La hora de fin debe ser mayor a la hora de inicio.")
+
+    entry = AppointmentRecord(
+        patient_id=str(payload.patient_id),
+        patient_name=(payload.patient_name or "").strip() or None,
+        patient_identifier=(payload.patient_identifier or "").strip() or None,
+        appointment_type=(payload.appointment_type or "control").strip() or "control",
+        mode=(payload.mode or "virtual").strip() or "virtual",
+        starts_at=starts_at,
+        ends_at=ends_at,
+        status=(payload.status or "scheduled").strip() or "scheduled",
+        reason=(payload.reason or "").strip() or None,
+        location=(payload.location or "").strip() or None,
+        created_by=current_user["email"],
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+
+    _create_audit(db, current_user["email"], "create_appointment", "Appointment", str(entry.id), f"patient_id={entry.patient_id}")
+    return {
+        "id": entry.id,
+        "patient_id": entry.patient_id,
+        "patient_name": entry.patient_name,
+        "patient_identifier": entry.patient_identifier,
+        "appointment_type": entry.appointment_type,
+        "mode": entry.mode,
+        "starts_at": entry.starts_at.isoformat(),
+        "ends_at": entry.ends_at.isoformat(),
+        "status": entry.status,
+        "reason": entry.reason,
+        "location": entry.location,
+    }
+
+
+@router.get("/superuser/appointments", response_model=List[AppointmentItem])
+@limiter.limit("120/minute")
+async def list_appointments(
+    request: Request,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    patient_id: Optional[str] = None,
+    current_user: Dict = Depends(get_current_superuser),
+    db: Session = Depends(get_db),
+):
+    query = db.query(AppointmentRecord)
+    if patient_id:
+        query = query.filter(AppointmentRecord.patient_id == str(patient_id))
+    if start:
+        query = query.filter(AppointmentRecord.starts_at >= _parse_iso_datetime(start))
+    if end:
+        query = query.filter(AppointmentRecord.starts_at <= _parse_iso_datetime(end))
+
+    rows = query.order_by(AppointmentRecord.starts_at.asc(), AppointmentRecord.id.asc()).limit(500).all()
+    _create_audit(db, current_user["email"], "list_appointments", "Appointment", patient_id, f"start={start}, end={end}")
+    return [
+        {
+            "id": item.id,
+            "patient_id": item.patient_id,
+            "patient_name": item.patient_name,
+            "patient_identifier": item.patient_identifier,
+            "appointment_type": item.appointment_type,
+            "mode": item.mode,
+            "starts_at": item.starts_at.isoformat(),
+            "ends_at": item.ends_at.isoformat(),
+            "status": item.status,
+            "reason": item.reason,
+            "location": item.location,
+        }
+        for item in rows
+    ]
+
 @router.post("/superuser/inference/{model_type}")
 @limiter.limit("30/minute")
 async def inference(request: Request, model_type: str, body: InferenceRequest, current_user: Dict = Depends(get_current_superuser), db: Session = Depends(get_db)):
@@ -721,7 +952,13 @@ async def inference(request: Request, model_type: str, body: InferenceRequest, c
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El recurso Patient debe contener un id válido.")
 
     url = settings.ML_SERVICE_URL if model_type == "tabular" else settings.DL_SERVICE_URL
-    payload = {"patient": body.patient_fhir, "model": body.model}
+    payload = {
+        "patient": body.patient_fhir,
+        "patient_id": patient_id,
+        "model": body.model,
+    }
+    if model_type == "image" and body.ecg_image_base64:
+        payload["image_base64"] = body.ecg_image_base64
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             result = await client.post(f"{url}/infer", json=payload)
@@ -731,6 +968,20 @@ async def inference(request: Request, model_type: str, body: InferenceRequest, c
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Error de comunicación con el servicio de inferencia: {exc}")
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=exc.response.status_code, detail=f"Servicio de inferencia respondió con error: {exc.response.text}")
+
+    if model_type == "image" and isinstance(inference_result, dict):
+        prediction_text = str(inference_result.get("prediction", "")).lower()
+        if "retinop" in prediction_text:
+            probability = inference_result.get("probability")
+            probability_value = float(probability) if isinstance(probability, (int, float)) else 0.5
+            if probability_value >= 0.75:
+                mapped = "ecg compatible con alto riesgo cardiaco"
+            elif probability_value >= 0.52:
+                mapped = "ecg con hallazgos intermedios"
+            else:
+                mapped = "ecg sin hallazgos agudos"
+            inference_result["prediction"] = mapped
+            inference_result["clinical_interpretation"] = "Prediccion normalizada a terminologia cardiaca"
 
     risk_assessment = {
         "resourceType": "RiskAssessment",
@@ -760,19 +1011,40 @@ async def inference(request: Request, model_type: str, body: InferenceRequest, c
         ],
     }
 
+    created_risk_assessment = None
+    created_diagnostic_report = None
+    fhir_warning = None
     try:
         created_risk_assessment = await _fhir_request("POST", "RiskAssessment", json=risk_assessment)
         created_diagnostic_report = await _fhir_request("POST", "DiagnosticReport", json=diagnostic_report)
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=exc.response.status_code, detail=f"No se pudo persistir el resultado en FHIR: {exc.response.text}")
+        fhir_warning = f"No se pudo persistir el resultado en FHIR: {exc.response.text}"
+    except httpx.RequestError as exc:
+        fhir_warning = f"No se pudo persistir el resultado en FHIR: {exc}"
+
+    latest_vitals_row = (
+        db.query(VitalSignRecord)
+        .filter(VitalSignRecord.patient_id == str(patient_id))
+        .order_by(VitalSignRecord.recorded_at.desc(), VitalSignRecord.id.desc())
+        .first()
+    )
+    latest_vitals = _build_vital_item(latest_vitals_row) if latest_vitals_row else None
 
     _create_audit(db, current_user["email"], "infer_patient", "RiskAssessment", patient_id, f"model_type={model_type}")
     return {
         "prediction": inference_result.get("prediction"),
         "probability": inference_result.get("probability"),
         "calibrated": inference_result.get("calibrated", True),
+        "model": inference_result.get("model", model_type),
+        "clinical_interpretation": inference_result.get("clinical_interpretation"),
+        "analysis": inference_result.get("analysis"),
+        "ecg_summary": inference_result.get("ecg_summary"),
+        "ecg_source": inference_result.get("ecg_source"),
+        "risk_reasons": inference_result.get("risk_reasons"),
+        "vital_signs": latest_vitals,
         "fhir_risk_assessment": created_risk_assessment,
         "fhir_diagnostic_report": created_diagnostic_report,
+        "fhir_warning": fhir_warning,
     }
 
 @router.delete("/superuser/patients/{patient_id}")

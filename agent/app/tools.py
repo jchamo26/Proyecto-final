@@ -17,6 +17,33 @@ async def query_fhir(patient_id: str, loinc_code: Optional[str] = None) -> Dict[
             "data": response.json(),
         }
 
+
+async def query_patient_clinical_data(patient_id: str) -> Dict[str, Any]:
+    base_url = settings.FHIR_SERVER_URL.rstrip("/")
+    patient_url = f"{base_url}/Patient/{patient_id}"
+    obs_url = f"{base_url}/Observation?patient={patient_id}&_count=50"
+    cond_url = f"{base_url}/Condition?subject=Patient/{patient_id}&_count=50"
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        patient_response = await client.get(patient_url)
+        observations_response = await client.get(obs_url)
+        conditions_response = await client.get(cond_url)
+
+    patient_response.raise_for_status()
+    observations_response.raise_for_status()
+    conditions_response.raise_for_status()
+
+    return {
+        "patient": patient_response.json(),
+        "observations_bundle": observations_response.json(),
+        "conditions_bundle": conditions_response.json(),
+        "request_urls": {
+            "patient": patient_url,
+            "observations": obs_url,
+            "conditions": cond_url,
+        },
+    }
+
 async def invoke_ml_model(model_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     normalized_type = "tabular" if model_type == "tabular" else "image"
     url = settings.ML_SERVICE_URL if normalized_type == "tabular" else settings.DL_SERVICE_URL

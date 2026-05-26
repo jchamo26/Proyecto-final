@@ -111,6 +111,12 @@ class AntiPromptInjectionMiddleware(BaseHTTPMiddleware):
             except Exception:
                 text = ""
 
+            # Binary payloads (for example ECG images in base64) can legitimately
+            # contain tokens that would otherwise match prompt-injection regexes.
+            # Skip strict scanning for those known upload routes.
+            if "/inference/image" in request.url.path:
+                return await call_next(request)
+
             query_text = " ".join(request.query_params.values())
             combined = f"{query_text}\n{text}"
             if _contains_prompt_injection(combined):

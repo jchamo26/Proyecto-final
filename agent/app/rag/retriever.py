@@ -1,7 +1,7 @@
 import hashlib
 import math
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from app.rag.clinical_docs import CLINICAL_DOCUMENTS
 
@@ -37,8 +37,8 @@ def _build_idf(docs_tokens: List[List[str]]) -> Dict[str, float]:
     }
 
 
-def _bm25_scores(query: str) -> List[float]:
-    docs_tokens = [_tokenize(d["text"]) for d in CLINICAL_DOCUMENTS]
+def _bm25_scores(query: str, documents: List[Dict[str, object]]) -> List[float]:
+    docs_tokens = [_tokenize(str(d.get("text", ""))) for d in documents]
     query_tokens = _tokenize(query)
     idf = _build_idf(docs_tokens)
     avg_len = sum(len(t) for t in docs_tokens) / max(1, len(docs_tokens))
@@ -82,11 +82,11 @@ def _cosine(v1: List[float], v2: List[float]) -> float:
     return dot / (norm1 * norm2)
 
 
-def _dense_scores(query: str) -> List[float]:
+def _dense_scores(query: str, documents: List[Dict[str, object]]) -> List[float]:
     q_vec = _hashed_embedding(query)
     scores = []
-    for doc in CLINICAL_DOCUMENTS:
-        d_vec = _hashed_embedding(doc["text"])
+    for doc in documents:
+        d_vec = _hashed_embedding(str(doc.get("text", "")))
         scores.append(_cosine(q_vec, d_vec))
     return scores
 
@@ -108,24 +108,53 @@ def _expand_query(query: str) -> List[str]:
     return expansions
 
 
-def retrieve_contexts(query: str, strategy: str = "hybrid", top_k: int = 4, alpha: float = 0.6) -> Dict[str, object]:
+def _prepare_documents(extra_documents: Optional[List[Dict[str, object]]]) -> List[Dict[str, object]]:
+    docs = list(CLINICAL_DOCUMENTS)
+    if not extra_documents:
+        return docs
+    for idx, item in enumerate(extra_documents):
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text", "")).strip()
+        if not text:
+            continue
+        docs.append(
+            {
+                "id": str(item.get("id") or f"patient-doc-{idx + 1}"),
+                "title": str(item.get("title") or "Contexto clinico de paciente"),
+                "text": text,
+                "tags": item.get("tags") if isinstance(item.get("tags"), list) else ["patient", "fhir"],
+                "source": str(item.get("source") or "patient_context"),
+            }
+        )
+    return docs
+
+
+def retrieve_contexts(
+    query: str,
+    strategy: str = "hybrid",
+    top_k: int = 4,
+    alpha: float = 0.6,
+    extra_documents: Optional[List[Dict[str, object]]] = None,
+) -> Dict[str, object]:
     strategy = (strategy or "hybrid").lower()
     top_k = max(1, min(top_k, 10))
     alpha = max(0.0, min(alpha, 1.0))
+    documents = _prepare_documents(extra_documents)
 
-    bm25 = _bm25_scores(query)
-    dense = _dense_scores(query)
+    bm25 = _bm25_scores(query, documents)
+    dense = _dense_scores(query, documents)
 
     if strategy == "bm25":
         final_scores = bm25
     elif strategy == "dense":
         final_scores = dense
     elif strategy == "multi_query":
-        aggregate = [0.0] * len(CLINICAL_DOCUMENTS)
+        aggregate = [0.0] * len(documents)
         expanded = _expand_query(query)
         for q in expanded:
-            q_bm25 = _norm(_bm25_scores(q))
-            q_dense = _norm(_dense_scores(q))
+            q_bm25 = _norm(_bm25_scores(q, documents))
+            q_dense = _norm(_dense_scores(q, documents))
             for idx in range(len(aggregate)):
                 aggregate[idx] += alpha * q_bm25[idx] + (1 - alpha) * q_dense[idx]
         final_scores = [value / len(expanded) for value in aggregate]
@@ -134,7 +163,7 @@ def retrieve_contexts(query: str, strategy: str = "hybrid", top_k: int = 4, alph
         dense_norm = _norm(dense)
         final_scores = [
             alpha * bm25_norm[idx] + (1 - alpha) * dense_norm[idx]
-            for idx in range(len(CLINICAL_DOCUMENTS))
+            for idx in range(len(documents))
         ]
         strategy = "hybrid"
 
@@ -146,13 +175,14 @@ def retrieve_contexts(query: str, strategy: str = "hybrid", top_k: int = 4, alph
 
     contexts = []
     for index, score in ranking:
-        doc = CLINICAL_DOCUMENTS[index]
+        doc = documents[index]
         contexts.append(
             {
                 "id": doc["id"],
                 "title": doc["title"],
                 "text": doc["text"],
                 "tags": doc["tags"],
+                "source": doc.get("source", "clinical_corpus"),
                 "score": round(float(score), 4),
             }
         )
@@ -161,7 +191,7 @@ def retrieve_contexts(query: str, strategy: str = "hybrid", top_k: int = 4, alph
         "strategy": strategy,
         "alpha": alpha,
         "top_k": top_k,
-        "total_documents": len(CLINICAL_DOCUMENTS),
+        "total_documents": len(documents),
         "contexts": contexts,
     }
 

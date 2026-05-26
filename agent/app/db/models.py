@@ -11,3 +11,14 @@ class AgentSummary(Base):
     session_id = Column(String(128), nullable=True)
     summary = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AgentMemoryRecord(Base):
+    __tablename__ = "agent_memory"
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(String(128), index=True, nullable=False)
+    session_id = Column(String(128), nullable=False)
+    user_query = Column(Text, nullable=False)
+    agent_response = Column(Text, nullable=False)
+    context_used = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
