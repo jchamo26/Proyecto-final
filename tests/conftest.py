@@ -10,6 +10,8 @@ from pathlib import Path
 # Agregar proyecto al path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+sys.path.insert(0, str(PROJECT_ROOT / "agent"))
 
 # Variables de entorno de test
 os.environ["OPENAI_API_KEY"] = "test_key"

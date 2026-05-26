@@ -1,11 +1,12 @@
 import hashlib
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 
-from app.core.encryption import EncryptedString
+from ..core.encryption import EncryptedString
 
 Base = declarative_base()
+
 
 class User(Base):
     __tablename__ = "users"
@@ -16,6 +17,7 @@ class User(Base):
     license_number = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
 class PatientRecord(Base):
     __tablename__ = "patients"
     id = Column(Integer, primary_key=True, index=True)
@@ -23,13 +25,14 @@ class PatientRecord(Base):
     document_type = Column(String(32), nullable=False)
     document_number_hash = Column(String(64), nullable=False, index=True)
     document_number = Column(EncryptedString, nullable=False)
-    first_name = Column(String(128), nullable=False)
-    last_name = Column(String(128), nullable=False)
-    gender = Column(String(16), nullable=False)
-    birth_date = Column(String(10), nullable=False)
+    first_name = Column(EncryptedString, nullable=False)
+    last_name = Column(EncryptedString, nullable=False)
+    gender = Column(EncryptedString, nullable=False)
+    birth_date = Column(EncryptedString, nullable=False)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
 
 class ObservationRecord(Base):
     __tablename__ = "observations"
@@ -43,6 +46,7 @@ class ObservationRecord(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id = Column(Integer, primary_key=True, index=True)
@@ -51,7 +55,7 @@ class AuditEvent(Base):
     resource_type = Column(String(64), nullable=False)
     resource_id = Column(String(128), nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    details = Column(Text, nullable=True)
+    details = Column(EncryptedString, nullable=True)
 
 
 class ProcedureLog(Base):
@@ -60,7 +64,7 @@ class ProcedureLog(Base):
     user_email = Column(String(255), nullable=False, index=True)
     action = Column(String(128), nullable=False)
     patient_id = Column(String(128), nullable=True, index=True)
-    patient_name = Column(String(255), nullable=True)
-    patient_identifier = Column(String(255), nullable=True)
-    comment = Column(Text, nullable=False)
+    patient_name = Column(EncryptedString, nullable=True)
+    patient_identifier = Column(EncryptedString, nullable=True)
+    comment = Column(EncryptedString, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

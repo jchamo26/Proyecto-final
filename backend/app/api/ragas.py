@@ -8,7 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import os
 
-from app.services import (
+from ..services import (
     RAGEvaluationService,
     RAGEvaluationRequest,
     RAGEvaluationResult,

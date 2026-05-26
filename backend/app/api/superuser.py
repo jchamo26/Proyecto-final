@@ -15,10 +15,10 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.rate_limit import limiter
-from app.db.models import AuditEvent, ObservationRecord, PatientRecord, ProcedureLog
-from app.db.session import get_db
+from ..core.config import settings
+from ..core.rate_limit import limiter
+from ..db.models import AuditEvent, ObservationRecord, PatientRecord, ProcedureLog
+from ..db.session import get_db
 
 router = APIRouter()
 

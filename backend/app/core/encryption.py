@@ -1,13 +1,10 @@
-import os
-import base64
 from cryptography.fernet import Fernet
-from sqlalchemy.types import TypeDecorator, String
+from sqlalchemy.types import String, TypeDecorator
 
-FERNET_KEY = os.getenv("FERNET_KEY")
-if not FERNET_KEY:
-    raise RuntimeError("FERNET_KEY debe estar definida en el entorno")
+from .config import settings
 
-cipher = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
+cipher = Fernet(settings.FERNET_KEY.encode())
+
 
 class EncryptedString(TypeDecorator):
     impl = String
