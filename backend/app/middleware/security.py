@@ -1,5 +1,6 @@
 import re
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 INJECTION_PATTERNS = [
@@ -30,14 +31,21 @@ class AntiPromptInjectionMiddleware(BaseHTTPMiddleware):
                 text = body.decode("utf-8")
             except Exception:
                 text = ""
+            # Binary payloads (for example ECG images in base64) can legitimately
+            # contain tokens that would otherwise match prompt-injection regexes.
+            # Skip strict scanning for those known upload routes.
+            if "/inference/image" in request.url.path:
+                return await call_next(request)
             for pattern in INJECTION_PATTERNS:
                 if re.search(pattern, text, re.IGNORECASE):
-                    raise HTTPException(
+                    return JSONResponse(
                         status_code=400,
-                        detail={
-                            "error": "INPUT_REJECTED",
-                            "message": "La consulta contiene patrones no permitidos.",
-                            "code": "PROMPT_INJECTION_DETECTED",
+                        content={
+                            "detail": {
+                                "error": "INPUT_REJECTED",
+                                "message": "La consulta contiene patrones no permitidos.",
+                                "code": "PROMPT_INJECTION_DETECTED",
+                            }
                         },
                     )
         return await call_next(request)

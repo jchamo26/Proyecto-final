@@ -132,12 +132,74 @@ function toCsvValue(value) {
   return text;
 }
 
+function encodeFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      resolve(result.includes(',') ? result.split(',')[1] : result);
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo de ECG.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function normalizePercent(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return null;
+  }
+  if (value <= 1) {
+    return Math.max(0, Math.min(100, value * 100));
+  }
+  return Math.max(0, Math.min(100, value));
+}
+
+function humanizeMetricKey(key) {
+  const text = String(key || '').replace(/^ecg_/, 'ECG_').replaceAll('_', ' ').trim();
+  if (!text) {
+    return 'Métrica';
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function extractNumericMetrics(payload) {
+  const metrics = [];
+
+  const visit = (source, prefix = '') => {
+    if (!source || typeof source !== 'object') {
+      return;
+    }
+
+    Object.entries(source).forEach(([key, value]) => {
+      const labelBase = prefix ? `${prefix}_${key}` : key;
+
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        metrics.push({ label: humanizeMetricKey(labelBase), value });
+        return;
+      }
+
+      if (Array.isArray(value)) {
+        const numericValues = value.filter((item) => typeof item === 'number' && Number.isFinite(item));
+        if (numericValues.length >= 3) {
+          const avg = numericValues.reduce((sum, item) => sum + item, 0) / numericValues.length;
+          metrics.push({ label: `${humanizeMetricKey(labelBase)} promedio`, value: avg });
+        }
+      }
+    });
+  };
+
+  visit(payload?.analysis);
+  visit(payload?.ecg_summary, 'ecg');
+  visit(payload?.vital_signs, 'vital');
+  return metrics;
+}
+
 function App() {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState('Ingrese sus credenciales para continuar.');
-  const [email, setEmail] = useState('medico@pechychon.com');
-  const [password, setPassword] = useState('SuperPass2026');
-  const [licenseNumber, setLicenseNumber] = useState('MED123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
   const [activeTab, setActiveTab] = useState('inicio');
 
   const [identifier, setIdentifier] = useState('CC|1234567890');
@@ -182,7 +244,8 @@ function App() {
 
   const [inferencePatientId, setInferencePatientId] = useState('');
   const [modelType, setModelType] = useState('tabular');
-  const [modelName, setModelName] = useState('diabetes');
+  const [ecgImageBase64, setEcgImageBase64] = useState('');
+  const [ecgImageName, setEcgImageName] = useState('');
   const [inferenceMessage, setInferenceMessage] = useState('Ejecute una evaluación para ver el resultado del apoyo clínico.');
   const [inferenceData, setInferenceData] = useState(null);
   const [alejoMessage, setAlejoMessage] = useState('Alejo te sugiere seleccionar un paciente y ejecutar el análisis tabular de riesgo cardíaco.');
@@ -193,11 +256,38 @@ function App() {
 
   const [agentPatientId, setAgentPatientId] = useState('1');
   const [agentQuestion, setAgentQuestion] = useState('¿Cuál es el riesgo cardíaco de este paciente y qué conducta clínica inicial recomiendas?');
-  const [agentModelType, setAgentModelType] = useState('tabular');
   const [agentStrategy, setAgentStrategy] = useState('hybrid');
   const [agentSessionId, setAgentSessionId] = useState('');
   const [agentMessage, setAgentMessage] = useState('Haga una consulta para obtener apoyo clínico contextual.');
   const [agentData, setAgentData] = useState(null);
+
+  const [vitalSigns, setVitalSigns] = useState([]);
+  const [vitalMessage, setVitalMessage] = useState('Seleccione un paciente para registrar signos vitales.');
+  const [vitalPatientId, setVitalPatientId] = useState('');
+  const [newVital, setNewVital] = useState({
+    heart_rate: '72',
+    systolic_bp: '120',
+    diastolic_bp: '80',
+    respiratory_rate: '16',
+    temperature_c: '36.6',
+    spo2: '98',
+    weight_kg: '70',
+    height_cm: '170',
+    note: '',
+  });
+
+  const [appointments, setAppointments] = useState([]);
+  const [appointmentMessage, setAppointmentMessage] = useState('Programe una cita virtual o presencial.');
+  const [newAppointment, setNewAppointment] = useState({
+    patient_id: '',
+    appointment_type: 'control',
+    mode: 'virtual',
+    starts_at: '',
+    ends_at: '',
+    status: 'scheduled',
+    reason: '',
+    location: '',
+  });
 
   useEffect(() => {
     localStorage.removeItem(legacyStorageKey);
@@ -235,6 +325,54 @@ function App() {
       observationRows,
     };
   }, [patients, selectedPatient, observationData, inferenceData]);
+
+  const inferenceProbabilityPercent = useMemo(
+    () => normalizePercent(inferenceData?.probability),
+    [inferenceData],
+  );
+
+  const inferenceGraphBars = useMemo(() => {
+    const metrics = extractNumericMetrics(inferenceData);
+    const chosen = metrics.slice(0, 5);
+    const maxAbs = chosen.reduce((acc, item) => Math.max(acc, Math.abs(item.value)), 0) || 1;
+
+    const bars = chosen.map((item) => ({
+      label: item.label,
+      raw: item.value,
+      width: Math.max(6, Math.round((Math.abs(item.value) / maxAbs) * 100)),
+    }));
+
+    if (inferenceProbabilityPercent !== null) {
+      bars.unshift({
+        label: 'Probabilidad de riesgo',
+        raw: inferenceProbabilityPercent,
+        width: Math.max(6, Math.round(inferenceProbabilityPercent)),
+        isPercent: true,
+      });
+    }
+
+    return bars;
+  }, [inferenceData, inferenceProbabilityPercent]);
+
+  const latestVital = useMemo(() => (vitalSigns.length > 0 ? vitalSigns[0] : null), [vitalSigns]);
+
+  const appointmentsByDate = useMemo(() => {
+    const grouped = {};
+    appointments.forEach((item) => {
+      const key = item?.starts_at ? new Date(item.starts_at).toISOString().slice(0, 10) : 'sin-fecha';
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(item);
+    });
+
+    return Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, items]) => ({
+        date,
+        items: items.slice().sort((x, y) => new Date(x.starts_at) - new Date(y.starts_at)),
+      }));
+  }, [appointments]);
 
   const pathologyOptions = useMemo(() => {
     const set = new Set();
@@ -297,7 +435,23 @@ function App() {
     setObservationPatientId(selectedId);
     setInferencePatientId(selectedId);
     setAgentPatientId(selectedId);
+    setVitalPatientId(selectedId);
+    setNewAppointment((current) => ({ ...current, patient_id: selectedId }));
   }, [selectedPatient?.id]);
+
+  useEffect(() => {
+    if (!token || !selectedPatient?.id) {
+      return;
+    }
+    loadVitalSigns(selectedPatient.id, token);
+  }, [token, selectedPatient?.id]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+    loadAppointments(token);
+  }, [token]);
 
   const buildPatientPayload = () => {
     const givenNames = newPatient.given
@@ -345,11 +499,17 @@ function App() {
     setObservationData(null);
     setObservationComment('');
     setInferencePatientId('');
+    setEcgImageBase64('');
+    setEcgImageName('');
     setInferenceMessage('Ejecute una evaluación para ver el resultado del apoyo clínico.');
     setInferenceData(null);
     setDeleteMessage('');
     setAgentMessage('Haga una consulta para obtener apoyo clínico contextual.');
     setAgentData(null);
+    setVitalSigns([]);
+    setVitalMessage('Seleccione un paciente para registrar signos vitales.');
+    setAppointmentMessage('Programe una cita virtual o presencial.');
+    setAppointments([]);
     setToasts([]);
   };
 
@@ -427,6 +587,118 @@ function App() {
     }
   };
 
+  const loadVitalSigns = async (patientId = selectedPatient?.id, accessToken = token) => {
+    if (!patientId || !accessToken) {
+      setVitalSigns([]);
+      return;
+    }
+    try {
+      const rows = await fetchJson(`${apiBase}/superuser/patients/${encodeURIComponent(String(patientId))}/vitals?limit=30`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      setVitalSigns(Array.isArray(rows) ? rows : []);
+    } catch {
+      setVitalSigns([]);
+    }
+  };
+
+  const createVitalSign = async (event) => {
+    event.preventDefault();
+    const patient = getPatientById(vitalPatientId || selectedPatient?.id) || selectedPatient;
+    if (!patient?.id) {
+      setVitalMessage('Seleccione un paciente para registrar signos vitales.');
+      return;
+    }
+
+    const payload = {
+      patient_name: patient.name,
+      patient_identifier: patient.identifier,
+      heart_rate: newVital.heart_rate ? Number(newVital.heart_rate) : null,
+      systolic_bp: newVital.systolic_bp ? Number(newVital.systolic_bp) : null,
+      diastolic_bp: newVital.diastolic_bp ? Number(newVital.diastolic_bp) : null,
+      respiratory_rate: newVital.respiratory_rate ? Number(newVital.respiratory_rate) : null,
+      temperature_c: newVital.temperature_c ? Number(newVital.temperature_c) : null,
+      spo2: newVital.spo2 ? Number(newVital.spo2) : null,
+      weight_kg: newVital.weight_kg ? Number(newVital.weight_kg) : null,
+      height_cm: newVital.height_cm ? Number(newVital.height_cm) : null,
+      note: newVital.note,
+    };
+
+    try {
+      const created = await fetchJson(`${apiBase}/superuser/patients/${encodeURIComponent(String(patient.id))}/vitals`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
+      setVitalSigns((current) => [created, ...current].slice(0, 30));
+      setVitalMessage('Signos vitales guardados correctamente.');
+      await addActionLog('Registro de signos vitales', patient, 'Se registró una nueva toma de signos vitales.');
+      pushToast('success', 'Signos vitales guardados.');
+    } catch (error) {
+      setVitalMessage(error.message || 'No se pudieron guardar los signos vitales.');
+      pushToast('error', error.message || 'No se pudieron guardar los signos vitales.');
+    }
+  };
+
+  const loadAppointments = async (accessToken = token) => {
+    if (!accessToken) {
+      setAppointments([]);
+      return;
+    }
+    try {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59).toISOString();
+      const rows = await fetchJson(`${apiBase}/superuser/appointments?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      setAppointments(Array.isArray(rows) ? rows : []);
+    } catch {
+      setAppointments([]);
+    }
+  };
+
+  const createAppointment = async (event) => {
+    event.preventDefault();
+    const patient = getPatientById(newAppointment.patient_id) || selectedPatient;
+    if (!patient?.id) {
+      setAppointmentMessage('Seleccione un paciente para agendar la cita.');
+      return;
+    }
+
+    try {
+      const created = await fetchJson(`${apiBase}/superuser/appointments`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          patient_id: String(patient.id),
+          patient_name: patient.name,
+          patient_identifier: patient.identifier,
+          appointment_type: newAppointment.appointment_type,
+          mode: newAppointment.mode,
+          starts_at: newAppointment.starts_at,
+          ends_at: newAppointment.ends_at,
+          status: newAppointment.status,
+          reason: newAppointment.reason,
+          location: newAppointment.location,
+        }),
+      });
+      setAppointments((current) => [...current, created].sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at)));
+      setAppointmentMessage('Cita creada correctamente.');
+      await addActionLog('Creación de cita', patient, `Cita ${newAppointment.mode} agendada para ${new Date(newAppointment.starts_at).toLocaleString('es-CO')}.`);
+      pushToast('success', 'Cita agendada correctamente.');
+    } catch (error) {
+      setAppointmentMessage(error.message || 'No se pudo crear la cita.');
+      pushToast('error', error.message || 'No se pudo crear la cita.');
+    }
+  };
+
   const requireProcedureComment = () => {
     const comment = procedureComment.trim();
     if (!comment) {
@@ -445,8 +717,26 @@ function App() {
 
   const configureWithAlejo = () => {
     setModelType('tabular');
-    setModelName('cardiac-risk-v1');
     setAlejoMessage('Alejo configuró el análisis de riesgo cardíaco tabular. Ahora pulsa "Evaluar paciente".');
+  };
+
+  const onEcgFileSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setEcgImageBase64('');
+      setEcgImageName('');
+      return;
+    }
+    try {
+      const base64 = await encodeFileAsBase64(file);
+      setEcgImageBase64(base64);
+      setEcgImageName(file.name);
+      pushToast('success', 'Imagen de ECG cargada correctamente.');
+    } catch (error) {
+      setEcgImageBase64('');
+      setEcgImageName('');
+      pushToast('error', error.message || 'No se pudo cargar la imagen de ECG.');
+    }
   };
 
   const getPatientById = (id) => {
@@ -660,10 +950,20 @@ function App() {
       setPatients(rows);
       setSelectedPatient(rows[0] || null);
       setSearchMessage(`Se encontraron ${rows.length} paciente(s).`);
+      await addActionLog(
+        'Búsqueda de pacientes',
+        rows[0] || selectedPatient,
+        `Consulta por identificador: ${identifier}. Resultados: ${rows.length}.`,
+      );
     } catch (error) {
       setPatients([]);
       setSelectedPatient(null);
       setSearchMessage(error.message || 'No se pudo consultar pacientes.');
+      await addActionLog(
+        'Búsqueda de pacientes fallida',
+        selectedPatient,
+        `Consulta por identificador: ${identifier}. Error: ${error.message || 'desconocido'}.`,
+      );
     }
   };
 
@@ -772,10 +1072,22 @@ function App() {
       if (!silent) {
         setImportMessage(`Dataset aplicado: ${data?.created_count || 0} creados, ${data?.skipped_count || 0} existentes.`);
         pushToast('success', `Dataset aplicado: ${importedPatients.length} pacientes listos.`);
+        await addActionLog(
+          'Importación dataset cardíaco',
+          importedPatients[0] || selectedPatient,
+          `Pacientes cargados: ${importedPatients.length}. Creados: ${data?.created_count || 0}. Omitidos: ${data?.skipped_count || 0}.`,
+        );
       }
     } catch (error) {
       setImportMessage(error.message || 'No se pudo cargar la lista del dataset UCI Heart Disease.');
       pushToast('error', error.message || 'No se pudo cargar la lista del dataset UCI Heart Disease.');
+      if (!silent) {
+        await addActionLog(
+          'Importación dataset fallida',
+          selectedPatient,
+          `Error durante importación de dataset: ${error.message || 'desconocido'}.`,
+        );
+      }
     } finally {
       setImportingDataset(false);
     }
@@ -836,25 +1148,36 @@ function App() {
   const runInference = async (event) => {
     event.preventDefault();
 
-    try {
-      const patientForInference = getPatientById(inferencePatientId) || selectedPatient;
+    const patientForInference = getPatientById(inferencePatientId) || selectedPatient;
 
+    try {
       const patientPayload = patientForInference?.raw || {
         resourceType: 'Patient',
         id: inferencePatientId || observationPatientId,
       };
+
+      if (modelType === 'image' && !ecgImageBase64) {
+        throw new Error('Debe cargar una imagen de ECG para el análisis por imagen.');
+      }
 
       const data = await fetchJson(`${apiBase}/superuser/inference/${modelType}`, {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({
           patient_fhir: patientPayload,
-          model: modelName,
+          ecg_image_base64: modelType === 'image' ? ecgImageBase64 : undefined,
         }),
       });
 
       setInferenceData(data);
       setInferenceMessage('Evaluación completada con éxito.');
+      await addActionLog(
+        modelType === 'image' ? 'Evaluación ECG por imagen' : 'Evaluación tabular',
+        patientForInference,
+        modelType === 'image'
+          ? `Análisis ECG ejecutado. Resultado: ${data?.prediction || 'sin predicción'}.`
+          : `Análisis tabular ejecutado. Resultado: ${data?.prediction || 'sin predicción'}.`,
+      );
     } catch (error) {
       setInferenceData(null);
       setInferenceMessage(error.message || 'No fue posible ejecutar la evaluación.');
@@ -870,7 +1193,6 @@ function App() {
       const payload = {
         patient_id: agentPatientId || selectedForAssistant?.id || '1',
         question: agentQuestion,
-        model_type: agentModelType,
         rag_strategy: agentStrategy,
       };
 
@@ -890,10 +1212,16 @@ function App() {
 
       setAgentData(data);
       setAgentMessage('Consulta completada.');
+      await addActionLog(
+        'Consulta Chamorro Bot',
+        selectedForAssistant,
+        `Pregunta: ${agentQuestion.trim() || 'sin pregunta'}`,
+      );
     } catch (error) {
       const localResponse = composeLocalAssistantGuidance(selectedForAssistant, agentQuestion);
       setAgentData({
         answer: {
+          assistant_response: localResponse,
           prediction: localResponse,
           retrieved_contexts: [
             `Paciente: ${selectedForAssistant?.name || 'Sin selección'}`,
@@ -1013,7 +1341,9 @@ function App() {
           <button className={activeTab === 'pacientes' ? 'nav-btn active' : 'nav-btn'} type="button" onClick={() => setActiveTab('pacientes')}>Pacientes</button>
           <button className={activeTab === 'observaciones' ? 'nav-btn active' : 'nav-btn'} type="button" onClick={() => setActiveTab('observaciones')}>Observaciones</button>
           <button className={activeTab === 'ia' ? 'nav-btn active' : 'nav-btn'} type="button" onClick={() => setActiveTab('ia')}>Apoyo diagnóstico</button>
+          <button className={activeTab === 'citas' ? 'nav-btn active' : 'nav-btn'} type="button" onClick={() => setActiveTab('citas')}>Citas</button>
           <button className={activeTab === 'agente' ? 'nav-btn active' : 'nav-btn'} type="button" onClick={() => setActiveTab('agente')}>Chamorro Bot</button>
+          <button className={activeTab === 'auditoria' ? 'nav-btn active' : 'nav-btn'} type="button" onClick={() => setActiveTab('auditoria')}>Auditoría</button>
         </aside>
 
         <section className="content-area">
@@ -1216,7 +1546,102 @@ function App() {
                 <p><strong>Identificación:</strong> {selectedPatient?.identifier || 'Sin selección'}</p>
                 <p><strong>Nacimiento:</strong> {selectedPatient?.birthDate || 'Sin selección'}</p>
                 <p><strong>Patología:</strong> {selectedPatient?.pathology || 'Sin selección'}</p>
+                {latestVital && (
+                  <p>
+                    <strong>Últimos signos vitales:</strong>
+                    {` FC ${latestVital.heart_rate ?? '-'} lpm, PA ${latestVital.systolic_bp ?? '-'} / ${latestVital.diastolic_bp ?? '-'} mmHg, SpO2 ${latestVital.spo2 ?? '-'}%, Temp ${latestVital.temperature_c ?? '-'} C`}
+                  </p>
+                )}
                 {deleteMessage && <p className="status-text">{deleteMessage}</p>}
+              </div>
+
+              <h3>Registro de signos vitales</h3>
+              <form className="grid-form" onSubmit={createVitalSign}>
+                <label>
+                  Paciente
+                  <select value={vitalPatientId} onChange={(event) => setVitalPatientId(event.target.value)}>
+                    {patientOptions.length === 0 ? (
+                      <option value="">Sin pacientes</option>
+                    ) : (
+                      patientOptions.map((option) => (
+                        <option key={`vital-${option.value}`} value={option.value}>{option.label}</option>
+                      ))
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Frecuencia cardiaca (lpm)
+                  <input value={newVital.heart_rate} onChange={(event) => setNewVital((current) => ({ ...current, heart_rate: event.target.value }))} />
+                </label>
+                <label>
+                  Presión sistólica (mmHg)
+                  <input value={newVital.systolic_bp} onChange={(event) => setNewVital((current) => ({ ...current, systolic_bp: event.target.value }))} />
+                </label>
+                <label>
+                  Presión diastólica (mmHg)
+                  <input value={newVital.diastolic_bp} onChange={(event) => setNewVital((current) => ({ ...current, diastolic_bp: event.target.value }))} />
+                </label>
+                <label>
+                  Frecuencia respiratoria
+                  <input value={newVital.respiratory_rate} onChange={(event) => setNewVital((current) => ({ ...current, respiratory_rate: event.target.value }))} />
+                </label>
+                <label>
+                  Temperatura (C)
+                  <input value={newVital.temperature_c} onChange={(event) => setNewVital((current) => ({ ...current, temperature_c: event.target.value }))} />
+                </label>
+                <label>
+                  SpO2 (%)
+                  <input value={newVital.spo2} onChange={(event) => setNewVital((current) => ({ ...current, spo2: event.target.value }))} />
+                </label>
+                <label>
+                  Peso (kg)
+                  <input value={newVital.weight_kg} onChange={(event) => setNewVital((current) => ({ ...current, weight_kg: event.target.value }))} />
+                </label>
+                <label>
+                  Talla (cm)
+                  <input value={newVital.height_cm} onChange={(event) => setNewVital((current) => ({ ...current, height_cm: event.target.value }))} />
+                </label>
+                <label className="full-width">
+                  Nota clínica
+                  <textarea rows={2} value={newVital.note} onChange={(event) => setNewVital((current) => ({ ...current, note: event.target.value }))} />
+                </label>
+                <button type="submit">Guardar signos vitales</button>
+              </form>
+              <p className="status-text">{vitalMessage}</p>
+
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>FC</th>
+                      <th>PA</th>
+                      <th>FR</th>
+                      <th>Temp</th>
+                      <th>SpO2</th>
+                      <th>IMC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vitalSigns.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="empty">No hay signos vitales registrados para este paciente.</td>
+                      </tr>
+                    ) : (
+                      vitalSigns.map((vital) => (
+                        <tr key={`vital-row-${vital.id}`}>
+                          <td>{new Date(vital.recorded_at).toLocaleString('es-CO')}</td>
+                          <td>{vital.heart_rate ?? '-'}</td>
+                          <td>{`${vital.systolic_bp ?? '-'} / ${vital.diastolic_bp ?? '-'}`}</td>
+                          <td>{vital.respiratory_rate ?? '-'}</td>
+                          <td>{vital.temperature_c ?? '-'}</td>
+                          <td>{vital.spo2 ?? '-'}</td>
+                          <td>{vital.bmi ?? '-'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
 
               <div className="action-log-box">
@@ -1398,13 +1823,16 @@ function App() {
                   Tipo de modelo
                   <select value={modelType} onChange={(event) => setModelType(event.target.value)}>
                     <option value="tabular">Tabular</option>
-                    <option value="image">Imagen</option>
+                    <option value="image">ECG por imagen</option>
                   </select>
                 </label>
-                <label>
-                  Modelo
-                  <input value={modelName} onChange={(event) => setModelName(event.target.value)} />
-                </label>
+                {modelType === 'image' && (
+                  <label>
+                    Imagen ECG
+                    <input type="file" accept="image/*" onChange={onEcgFileSelected} />
+                    <small className="muted">{ecgImageName ? `Archivo: ${ecgImageName}` : 'Suba una imagen de ECG para el análisis.'}</small>
+                  </label>
+                )}
                 <button type="submit">Evaluar paciente</button>
               </form>
 
@@ -1423,6 +1851,163 @@ function App() {
                   <strong>{inferenceData?.calibrated === false ? 'No' : 'Sí'}</strong>
                   <span>Calibrado</span>
                 </article>
+              </div>
+
+              {inferenceData && (
+                <div className="inference-visuals">
+                  <div className="risk-meter card">
+                    <h3>Visual de riesgo</h3>
+                    <p className="muted">
+                      {inferenceProbabilityPercent === null
+                        ? 'No se recibió probabilidad numérica para graficar.'
+                        : `Riesgo estimado: ${Math.round(inferenceProbabilityPercent)}%`}
+                    </p>
+                    <div className="risk-meter-track" aria-label="Probabilidad de riesgo">
+                      <div
+                        className="risk-meter-fill"
+                        style={{ width: `${inferenceProbabilityPercent || 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {inferenceGraphBars.length > 0 && (
+                    <div className="inference-chart card">
+                      <h3>Gráfica del análisis</h3>
+                      <div className="chart-grid">
+                        {inferenceGraphBars.map((bar) => (
+                          <div className="chart-row" key={`chart-${bar.label}`}>
+                            <span className="chart-label">{bar.label}</span>
+                            <div className="chart-track" role="img" aria-label={`${bar.label} ${bar.raw}`}>
+                              <div className={`chart-fill${bar.isPercent ? ' percent' : ''}`} style={{ width: `${bar.width}%` }} />
+                            </div>
+                            <strong className="chart-value">{bar.isPercent ? `${Math.round(bar.raw)}%` : Number(bar.raw).toFixed(3)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(inferenceData?.analysis || inferenceData?.ecg_summary || inferenceData?.vital_signs) && (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Métrica</th>
+                        <th>Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(inferenceData.analysis || {}).map(([key, value]) => (
+                        <tr key={`analysis-${key}`}>
+                          <td>{key}</td>
+                          <td>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</td>
+                        </tr>
+                      ))}
+                      {Object.entries(inferenceData.ecg_summary || {}).map(([key, value]) => (
+                        <tr key={`ecg-${key}`}>
+                          <td>{`ecg_${key}`}</td>
+                          <td>{Array.isArray(value) ? `${value.slice(0, 12).join(', ')}...` : String(value)}</td>
+                        </tr>
+                      ))}
+                      {Object.entries(inferenceData.vital_signs || {}).map(([key, value]) => (
+                        <tr key={`vital-${key}`}>
+                          <td>{`vital_${key}`}</td>
+                          <td>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
+          {activeTab === 'citas' && (
+            <section className="card section-card">
+              <h2>Agenda de citas</h2>
+              <p className="muted">Programe citas virtuales o presenciales y visualice el calendario clínico.</p>
+
+              <form className="grid-form" onSubmit={createAppointment}>
+                <label>
+                  Paciente
+                  <select value={newAppointment.patient_id} onChange={(event) => setNewAppointment((current) => ({ ...current, patient_id: event.target.value }))}>
+                    {patientOptions.length === 0 ? (
+                      <option value="">Sin pacientes</option>
+                    ) : (
+                      patientOptions.map((option) => (
+                        <option key={`appointment-${option.value}`} value={option.value}>{option.label}</option>
+                      ))
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Tipo de cita
+                  <select value={newAppointment.appointment_type} onChange={(event) => setNewAppointment((current) => ({ ...current, appointment_type: event.target.value }))}>
+                    <option value="control">Control</option>
+                    <option value="primera_vez">Primera vez</option>
+                    <option value="urgente">Urgente</option>
+                    <option value="seguimiento">Seguimiento</option>
+                  </select>
+                </label>
+                <label>
+                  Modalidad
+                  <select value={newAppointment.mode} onChange={(event) => setNewAppointment((current) => ({ ...current, mode: event.target.value }))}>
+                    <option value="virtual">Virtual</option>
+                    <option value="presencial">Presencial</option>
+                  </select>
+                </label>
+                <label>
+                  Inicio
+                  <input type="datetime-local" value={newAppointment.starts_at} onChange={(event) => setNewAppointment((current) => ({ ...current, starts_at: event.target.value }))} />
+                </label>
+                <label>
+                  Fin
+                  <input type="datetime-local" value={newAppointment.ends_at} onChange={(event) => setNewAppointment((current) => ({ ...current, ends_at: event.target.value }))} />
+                </label>
+                <label>
+                  Estado
+                  <select value={newAppointment.status} onChange={(event) => setNewAppointment((current) => ({ ...current, status: event.target.value }))}>
+                    <option value="scheduled">Programada</option>
+                    <option value="confirmed">Confirmada</option>
+                    <option value="completed">Completada</option>
+                    <option value="cancelled">Cancelada</option>
+                  </select>
+                </label>
+                <label className="full-width">
+                  Motivo
+                  <textarea rows={2} value={newAppointment.reason} onChange={(event) => setNewAppointment((current) => ({ ...current, reason: event.target.value }))} />
+                </label>
+                <label>
+                  Ubicación / enlace
+                  <input value={newAppointment.location} onChange={(event) => setNewAppointment((current) => ({ ...current, location: event.target.value }))} placeholder="Consultorio 3 o URL de videollamada" />
+                </label>
+                <button type="submit">Guardar cita</button>
+              </form>
+
+              <div className="inline-actions">
+                <button type="button" className="ghost" onClick={() => loadAppointments()}>Actualizar calendario</button>
+              </div>
+              <p className="status-text">{appointmentMessage}</p>
+
+              <div className="calendar-grid">
+                {appointmentsByDate.length === 0 ? (
+                  <p className="empty">No hay citas programadas para el periodo cargado.</p>
+                ) : (
+                  appointmentsByDate.map((day) => (
+                    <article className="calendar-day" key={`day-${day.date}`}>
+                      <h3>{new Date(`${day.date}T00:00:00`).toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'short' })}</h3>
+                      {day.items.map((item) => (
+                        <div className="calendar-event" key={`appt-${item.id}`}>
+                          <strong>{new Date(item.starts_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })} · {item.patient_name || item.patient_id}</strong>
+                          <span>{item.mode === 'virtual' ? 'Virtual' : 'Presencial'} · {item.appointment_type}</span>
+                          <small>{item.reason || 'Sin motivo registrado'}{item.location ? ` | ${item.location}` : ''}</small>
+                        </div>
+                      ))}
+                    </article>
+                  ))
+                )}
               </div>
             </section>
           )}
@@ -1455,13 +2040,6 @@ function App() {
                   </select>
                 </label>
                 <label>
-                  Modelo de apoyo
-                  <select value={agentModelType} onChange={(event) => setAgentModelType(event.target.value)}>
-                    <option value="tabular">Tabular</option>
-                    <option value="image">Imagen</option>
-                  </select>
-                </label>
-                <label>
                   Sesión (opcional)
                   <input value={agentSessionId} onChange={(event) => setAgentSessionId(event.target.value)} placeholder="Se completa automáticamente" />
                 </label>
@@ -1478,8 +2056,12 @@ function App() {
                 <div className="agent-response">
                   <h3>Respuesta del asistente</h3>
                   <p>
-                    {typeof agentData?.answer?.prediction?.prediction === 'string'
-                      ? agentData.answer.prediction.prediction
+                    {typeof agentData?.answer?.assistant_response === 'string'
+                      ? agentData.answer.assistant_response
+                      : typeof agentData?.answer?.prediction?.prediction === 'string'
+                        ? agentData.answer.prediction.prediction
+                        : typeof agentData?.response === 'string'
+                          ? agentData.response
                       : typeof agentData?.answer?.prediction === 'string'
                         ? agentData.answer.prediction
                         : 'Se generó una respuesta clínica para este caso.'}
@@ -1493,6 +2075,46 @@ function App() {
                   </ul>
                 </div>
               )}
+            </section>
+          )}
+
+          {activeTab === 'auditoria' && (
+            <section className="card section-card">
+              <h2>Auditoría de acciones</h2>
+              <p className="muted">Registro cronológico de procedimientos ejecutados por el usuario en la sesión clínica.</p>
+              <div className="inline-actions">
+                <button type="button" className="ghost" onClick={() => loadProcedureLogs()}>Actualizar bitácora</button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Acción</th>
+                      <th>Paciente</th>
+                      <th>Identificador</th>
+                      <th>Comentario</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {actionLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="empty">No hay eventos de auditoría registrados aún.</td>
+                      </tr>
+                    ) : (
+                      actionLogs.map((log) => (
+                        <tr key={`audit-${log.id}`}>
+                          <td>{log.timestamp}</td>
+                          <td>{log.action}</td>
+                          <td>{log.patientName}</td>
+                          <td>{log.patientIdentifier}</td>
+                          <td>{log.comment || 'Sin comentario'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
         </section>
