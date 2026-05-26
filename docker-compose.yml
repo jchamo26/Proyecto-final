@@ -1,0 +1,177 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+      - hapi-fhir
+      - agent
+    networks:
+      - app-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - '8000:8000'
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - app-net
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    container_name: hapi-fhir
+    restart: always
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/fhir
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      - HAPI_FHIR_SERVER_NAME=FHIR Server
+    ports:
+      - '8080:8080'
+    depends_on:
+      - postgres
+    networks:
+      - app-net
+    volumes:
+      - hapi_data:/var/hapi-fhir
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio_data:/data
+    networks:
+      - app-net
+
+  ml-service:
+    build:
+      context: ./ml
+      dockerfile: Dockerfile
+    container_name: ml-service
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - '8100:8100'
+    volumes:
+      - ./models:/ml/models
+    depends_on:
+      - minio
+      - postgres
+    networks:
+      - app-net
+
+  dl-service:
+    build:
+      context: ./dl
+      dockerfile: Dockerfile
+    container_name: dl-service
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - '8200:8200'
+    volumes:
+      - ./models:/dl/models
+    depends_on:
+      - minio
+    networks:
+      - app-net
+
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: agent
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - '8300:8300'
+    depends_on:
+      - backend
+      - postgres
+      - redis
+      - minio
+    networks:
+      - app-net
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    restart: always
+    environment:
+      - BACKEND_STORE_URI=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mlflow
+      - ARTIFACT_ROOT=/mlflow/artifacts
+    ports:
+      - '5000:5000'
+    volumes:
+      - mlflow_data:/mlflow
+    depends_on:
+      - postgres
+    networks:
+      - app-net
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  hapi_data:
+  redis_data:
+  minio_data:
+  mlflow_data:

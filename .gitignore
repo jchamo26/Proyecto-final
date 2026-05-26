@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+*.sqlite3
+*.log
+.vscode/
+.DS_Store
+__MACOSX/
+node_modules/
+.terraform/
+
+# Docker
+docker-compose.override.yml
+**/data
+**/tmp
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

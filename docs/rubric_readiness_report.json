@@ -1,0 +1,8 @@
+{
+  "rag_docs_count": 22,
+  "ragas_question_count": 22,
+  "rate_limiting_implemented": true,
+  "bcrypt_rounds_12": true,
+  "safe_env_placeholders": true,
+  "ready_minimum_targets": true
+}

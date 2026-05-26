@@ -1,0 +1,28 @@
+[
+  {
+    "user_input":"\u00bfCu\u00e1l es el riesgo de diabetes para este paciente?",
+    "retrieved_contexts":[
+      "Glucosa en ayunas 130 mg\/dL",
+      "BMI 32"
+    ],
+    "response":"El paciente presenta riesgo alto de diabetes seg\u00fan niveles de glucosa y BMI.",
+    "reference":"Riesgo alto de diabetes.",
+    "faithfulness":1.0,
+    "answer_relevancy":-0.3307767555,
+    "context_precision":1.0,
+    "context_recall":1.0
+  },
+  {
+    "user_input":"\u00bfQu\u00e9 observaciones cl\u00ednicas apoyan el diagn\u00f3stico?",
+    "retrieved_contexts":[
+      "Presi\u00f3n arterial 145\/90",
+      "Glucosa en ayunas 130 mg\/dL"
+    ],
+    "response":"La presi\u00f3n arterial elevada y la glucosa en ayunas apoyan el diagn\u00f3stico.",
+    "reference":"La evidencia cl\u00ednica incluye presi\u00f3n arterial elevada y glucosa alta.",
+    "faithfulness":1.0,
+    "answer_relevancy":-0.3509960223,
+    "context_precision":1.0,
+    "context_recall":1.0
+  }
+]

@@ -1,0 +1,28 @@
+<svg width="960" height="520" viewBox="0 0 960 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="960" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EAF6FF"/>
+      <stop offset="1" stop-color="#D7ECFA"/>
+    </linearGradient>
+    <radialGradient id="pulse" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(476 252) rotate(90) scale(170 240)">
+      <stop stop-color="#FFD9DE"/>
+      <stop offset="1" stop-color="#FF8EA0"/>
+    </radialGradient>
+    <linearGradient id="heart" x1="300" y1="120" x2="660" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E44564"/>
+      <stop offset="1" stop-color="#BF2349"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="960" height="520" rx="24" fill="url(#bg)"/>
+  <circle cx="476" cy="252" r="172" fill="url(#pulse)" opacity="0.32"/>
+
+  <path d="M287 276C287 214 337 170 393 170C432 170 462 188 480 218C498 188 528 170 567 170C623 170 673 214 673 276C673 355 599 401 480 466C361 401 287 355 287 276Z" fill="url(#heart)"/>
+
+  <path d="M174 260H290L336 206L390 317L446 237L509 302L560 221L622 260H786" stroke="#0C5D86" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <circle cx="786" cy="260" r="10" fill="#0C5D86"/>
+  <circle cx="174" cy="260" r="10" fill="#0C5D86"/>
+
+  <text x="480" y="100" text-anchor="middle" fill="#1A4E69" font-family="Manrope, Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="0.6">Unidad de Cuidado Cardíaco</text>
+</svg>

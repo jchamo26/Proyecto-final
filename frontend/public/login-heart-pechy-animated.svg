@@ -1,0 +1,86 @@
+<svg width="760" height="520" viewBox="0 0 760 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="760" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EAF5FE"/>
+      <stop offset="1" stop-color="#D2E8F8"/>
+    </linearGradient>
+    <linearGradient id="heart" x1="240" y1="118" x2="516" y2="372" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F06286"/>
+      <stop offset="1" stop-color="#C72E5A"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(380 252) rotate(90) scale(170 198)">
+      <stop stop-color="#E8F6FF"/>
+      <stop offset="1" stop-color="#B6D9EE" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blurBig" x="130" y="58" width="500" height="392" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="heartGlow" x="214" y="122" width="332" height="358" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="pechyBadge" x1="332" y1="63" x2="428" y2="97" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EA5D83"/>
+      <stop offset="1" stop-color="#C42A55"/>
+    </linearGradient>
+    <style>
+      .orbital {
+        transform-origin: 380px 252px;
+        animation: spin 13s linear infinite;
+      }
+      .heartbeat {
+        transform-origin: 380px 258px;
+        animation: beat 1.35s cubic-bezier(.4, 0, .2, 1) infinite;
+      }
+      .glow {
+        transform-origin: 380px 252px;
+        animation: glowPulse 2.8s ease-in-out infinite;
+      }
+      .ecg {
+        stroke-dasharray: 18 14;
+        animation: ecgRun 1.8s linear infinite;
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes beat {
+        0%, 100% { transform: scale(1); }
+        28% { transform: scale(1.06); }
+        52% { transform: scale(1.015); }
+      }
+      @keyframes glowPulse {
+        0%, 100% { opacity: .34; transform: scale(1); }
+        50% { opacity: .56; transform: scale(1.05); }
+      }
+      @keyframes ecgRun {
+        from { stroke-dashoffset: 0; }
+        to { stroke-dashoffset: -320; }
+      }
+    </style>
+  </defs>
+
+  <rect width="760" height="520" rx="28" fill="url(#bg)"/>
+
+  <ellipse class="glow" cx="380" cy="252" rx="176" ry="162" fill="url(#halo)" filter="url(#blurBig)"/>
+
+  <g class="orbital">
+    <circle cx="380" cy="252" r="170" stroke="#1A5D83" stroke-opacity="0.18" stroke-width="2" stroke-dasharray="10 12"/>
+    <g transform="translate(380 80)">
+      <rect x="-52" y="-18" width="104" height="36" rx="18" fill="url(#pechyBadge)"/>
+      <text x="0" y="8" text-anchor="middle" fill="#FFF6F8" font-family="DM Sans, Manrope, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="0.8">PECHY</text>
+    </g>
+  </g>
+
+  <g class="heartbeat" filter="url(#heartGlow)">
+    <path d="M244 262C244 201 293 157 347 157C386 157 414 175 430 205C446 175 474 157 513 157C567 157 616 201 616 262C616 338 548 382 430 448C312 382 244 338 244 262Z" fill="url(#heart)"/>
+  </g>
+
+  <path d="M176 264H252L292 222L332 302L374 242L418 290L458 226L500 264H586" class="ecg" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M176 264H252L292 222L332 302L374 242L418 290L458 226L500 264H586" stroke="#0C5D86" stroke-opacity="0.18" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="380" y="486" text-anchor="middle" fill="#1A4F6B" font-family="Manrope, Arial, sans-serif" font-size="29" font-weight="800">Pechy cuida cada latido</text>
+</svg>

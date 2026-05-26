@@ -1,0 +1,25 @@
+{
+  "ml": {
+    "url": "http://127.0.0.1:8100/infer",
+    "status": 200,
+    "metrics": {
+      "avg_ms": 4.04,
+      "p95_ms": 4.23,
+      "min_ms": 3.03,
+      "max_ms": 11.2
+    },
+    "error": null
+  },
+  "dl": {
+    "url": "http://127.0.0.1:8200/infer",
+    "status": 200,
+    "metrics": {
+      "avg_ms": 4.17,
+      "p95_ms": 5.61,
+      "min_ms": 2.87,
+      "max_ms": 6.44
+    },
+    "error": null
+  },
+  "iterations": 20
+}

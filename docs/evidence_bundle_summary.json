@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-05-18T19:23:09.748730",
+  "executions": [
+    {
+      "script": "scripts/rubric_readiness_check.py",
+      "exit_code": 0,
+      "stdout_tail": "{\n  \"rag_docs_count\": 22,\n  \"ragas_question_count\": 22,\n  \"rate_limiting_implemented\": true,\n  \"bcrypt_rounds_12\": true,\n  \"safe_env_placeholders\": true,\n  \"ready_minimum_targets\": true\n}\n\nReporte escrito en: C:\\Users\\tuwar\\Downloads\\ProyectoFinal_SSD\\ProyectoFinal_SSD\\docs\\rubric_readiness_report.json",
+      "stderr_tail": ""
+    },
+    {
+      "script": "scripts/benchmark_inference.py",
+      "exit_code": 0,
+      "stdout_tail": "== Benchmark ML ==\nstatus: 200\n{'avg_ms': 4.04, 'p95_ms': 4.23, 'min_ms': 3.03, 'max_ms': 11.2}\nsample_response: {'model': 'tabular', 'prediction': 'alto riesgo', 'probability': 0.95, 'calibrated': True}\n\n== Benchmark DL ==\nstatus: 200\n{'avg_ms': 4.17, 'p95_ms': 5.61, 'min_ms': 2.87, 'max_ms': 6.44}\nsample_response: {'model': 'imagen', 'prediction': 'retinopatía moderada', 'probability': 0.84, 'calibrated': True}\n\nReporte guardado en docs/inference_latency_report.json\n\nObjetivo sugerido de rúbrica:\n- ML avg_ms < 300\n- DL avg_ms < 500",
+      "stderr_tail": ""
+    },
+    {
+      "script": "scripts/validate_system.py",
+      "exit_code": 0,
+      "stdout_tail": "  ~ RAGAS                     NEUTRAL/ESPERADO\n  ~ OpenAI Client             NEUTRAL/ESPERADO\n  + Notebooks                 PASS\n  + Mock Server               PASS\n  + Reportes                  PASS\n  + Documentación             PASS\n\nTotal: 4 PASS, 2 NEUTRAL, 0 FAIL\n\nValidación completada exitosamente\n\nProximos pasos:\n  1. Iniciar el mock server:\n     $env:OPENAI_API_KEY='local_dummy_key'; python scripts\\mock_openai_server.py\n\n  2. Ejecutar la evaluación RAGAS:\n     $env:LLM_ENDPOINT='http://127.0.0.1:8501'; python notebooks\\ragas_evaluation.py\n\n  3. Ver estadísticas del mock server:\n     Invoke-RestMethod -Uri http://127.0.0.1:8501/stats",
+      "stderr_tail": ""
+    }
+  ],
+  "artifacts": {
+    "rubric_readiness_report": "C:\\Users\\tuwar\\Downloads\\ProyectoFinal_SSD\\ProyectoFinal_SSD\\docs\\rubric_readiness_report.json",
+    "inference_latency_report": "C:\\Users\\tuwar\\Downloads\\ProyectoFinal_SSD\\ProyectoFinal_SSD\\docs\\inference_latency_report.json",
+    "cloudflare_verification": "C:\\Users\\tuwar\\Downloads\\ProyectoFinal_SSD\\ProyectoFinal_SSD\\docs\\cloudflare_verification.json",
+    "public_deployment_verification": "C:\\Users\\tuwar\\Downloads\\ProyectoFinal_SSD\\ProyectoFinal_SSD\\docs\\public_deployment_verification.json"
+  }
+}
